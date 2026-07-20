@@ -28,12 +28,22 @@ class DaebangHyundaiRunner(
         val normalizedTarget = normalizeName(targetComplexName)
         val fetched = naverService.fetchListings(regionName, cortarNo)
         val targetListings = fetched.filter {
-            normalizeName(it.title) == normalizedTarget && it.pyeong in minPyeong..maxPyeong
+            val normalizedTitle = normalizeName(it.title)
+            normalizedTitle.contains(normalizedTarget) && it.pyeong in minPyeong..maxPyeong
         }
 
         if (fetched.isNotEmpty() && targetListings.isEmpty()) {
-            val available = fetched.map { it.title }.distinct().sorted().joinToString(", ").take(1000)
-            error("대상 단지를 찾지 못했습니다. target=$targetComplexName, available=$available")
+            val available = fetched
+                .map { "${it.title}(${it.pyeong}평)" }
+                .distinct()
+                .sorted()
+                .joinToString(", ")
+                .take(2000)
+            error(
+                "대상 단지를 찾지 못했습니다. " +
+                    "target=$targetComplexName, normalizedTarget=$normalizedTarget, " +
+                    "range=${minPyeong}..${maxPyeong}, available=$available"
+            )
         }
 
         val oldData = repository.loadAll()

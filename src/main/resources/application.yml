@@ -3,44 +3,41 @@ spring:
     web-application-type: none
 
 bot:
-  enabled: true
+  enabled: false
   safe:
-    max-regions-per-run: 0
-    rotate-start-by-day: false
-    start-region-offset: 0
-    retry-region-after-abuse: false
-    max-abuse-retry-per-region: 0
-    max-abuse-wait-ms: 0
-    stop-run-on-abuse: true
-    replay-abuse-skipped-regions: false
-    max-abuse-replay-rounds: 0
     region-shard: 0
-    save-run-progress: true
-    region-delay-min-ms: 3000
-    region-delay-max-ms: 6000
+
+daebang:
+  enabled: true
+  target-complex-name: "대방현대1차"
+  region-name: "서울동작_대방동"
+  cortar-no: "1159010800"
+  min-pyeong: 20
+  max-pyeong: 39
+  off-market-confirm-miss-count: 3
 
 naver:
   safe:
     max-attempts: 2
-    base-backoff-ms: 2000
+    base-backoff-ms: 2500
     backoff-jitter-ms: 1500
     article-order: prc,date
-    max-complex-pages: 1
-    max-complex-pages-on-overflow: 3
-    max-overflow-complexes-per-region: 0
-    overflow-batch-size: 2
-    overflow-batch-cooldown-min-ms: 20000
-    overflow-batch-cooldown-max-ms: 35000
+    max-complex-pages: 2
+    max-complex-pages-on-overflow: 4
+    max-overflow-complexes-per-region: 1
+    overflow-batch-size: 1
+    overflow-batch-cooldown-min-ms: 10000
+    overflow-batch-cooldown-max-ms: 15000
     max-complexes-per-region: 0
-    rotate-complexes-by-day: true
-    complex-delay-min-ms: 700
-    complex-delay-max-ms: 1500
+    rotate-complexes-by-day: false
+    complex-delay-min-ms: 1200
+    complex-delay-max-ms: 2500
     complex-batch-size: 6
     batch-cooldown-min-ms: 8000
     batch-cooldown-max-ms: 15000
-    overflow-complex-delay-min-ms: 1000
-    overflow-complex-delay-max-ms: 2200
-    page-delay-min-ms: 500
-    page-delay-max-ms: 1200
+    overflow-complex-delay-min-ms: 1800
+    overflow-complex-delay-max-ms: 3200
+    page-delay-min-ms: 1200
+    page-delay-max-ms: 2500
     request-timeout-ms: 20000
-    abuse-cooldown-minutes: 5
+    abuse-cooldown-minutes: 30

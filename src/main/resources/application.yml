@@ -18,6 +18,8 @@ daebang:
 
 naver:
   safe:
+    # 대방현대1차 네이버 단지번호. 대방동의 다른 단지는 수집하지 않는다.
+    target-complex-nos: "368"
     max-attempts: 2
     base-backoff-ms: 2500
     backoff-jitter-ms: 1500

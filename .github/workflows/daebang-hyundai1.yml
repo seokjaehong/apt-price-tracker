@@ -50,6 +50,7 @@ jobs:
         env:
           BOT_ENABLED: "false"
           DAEBANG_ENABLED: "true"
+          DAEBANG_TARGET_COMPLEX_NO: "368"
           DAEBANG_TARGET_COMPLEX_NAME: "대방현대1차"
           DAEBANG_REGION_NAME: "서울동작_대방동"
           DAEBANG_CORTAR_NO: "1159010800"

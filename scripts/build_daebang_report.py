@@ -7,6 +7,7 @@ from pathlib import Path
 
 DATA = Path("data/apt-listings.json")
 OUT = Path("docs/index.html")
+TARGET_COMPLEX_NO = "368"
 
 
 def esc(value):
@@ -22,7 +23,8 @@ def money(value):
 
 
 def main():
-    listings = json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else []
+    all_listings = json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else []
+    listings = [x for x in all_listings if str(x.get("hscpNo", "")) == TARGET_COMPLEX_NO]
     listings.sort(key=lambda x: (x.get("status", ""), x.get("price", 0), x.get("articleNo", "")))
     counts = Counter(x.get("status", "UNKNOWN") for x in listings)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")

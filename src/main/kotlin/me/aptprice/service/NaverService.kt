@@ -65,6 +65,9 @@ class NaverService(
     @Value("\${naver.safe.max-complexes-per-region:35}")
     private var maxComplexesPerRegion: Int = 35
 
+    @Value("\${naver.safe.target-complex-nos:}")
+    private var targetComplexNos: String = ""
+
     @Value("\${naver.safe.rotate-complexes-by-day:true}")
     private var rotateComplexesByDay: Boolean = true
 
@@ -116,10 +119,30 @@ class NaverService(
 
         log.info("{} 수집 시작 (fin.land 브라우저)", regionName)
 
-        val complexes = fetchComplexes(regionName, cortarNo)
-        if (complexes.isEmpty()) {
+        val allComplexes = fetchComplexes(regionName, cortarNo)
+        if (allComplexes.isEmpty()) {
             log.warn("{} 단지 목록 없음", regionName)
             return emptyList()
+        }
+
+        val configuredComplexNos = targetComplexNos
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+        val complexes = if (configuredComplexNos.isEmpty()) {
+            allComplexes
+        } else {
+            allComplexes.filter { it.hscpNo in configuredComplexNos }
+        }
+        if (complexes.isEmpty()) {
+            val available = allComplexes.joinToString { "${it.hscpNo}:${it.hscpNm}" }
+            throw RegionFetchFailedException(
+                "$regionName 대상 단지번호를 찾지 못했습니다. target=$configuredComplexNos, available=$available"
+            )
+        }
+        if (configuredComplexNos.isNotEmpty()) {
+            log.info("{} 지정 단지만 수집: {}", regionName, complexes.joinToString { "${it.hscpNo}:${it.hscpNm}" })
         }
 
         val runComplexes = selectRunComplexes(regionName, complexes)

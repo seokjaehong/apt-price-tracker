@@ -3,8 +3,9 @@ name: Daebang Hyundai 1 Tracker
 on:
   workflow_dispatch:
   schedule:
-    - cron: "7 0 * * *"   # 09:07 KST
-    - cron: "7 10 * * *"  # 19:07 KST
+    # KST 평일 08:30 / 13:30
+    - cron: "30 23 * * 0-4"
+    - cron: "30 4 * * 1-5"
 
 permissions:
   contents: write
@@ -17,8 +18,9 @@ concurrency:
 
 jobs:
   collect:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 네이버가 GitHub 호스티드 러너의 해외 IP를 차단하므로 국내 Mac에서 실행한다.
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,44 +34,17 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install browser helper dependencies
+        run: npm ci
+
       - name: Grant execute permission
         run: chmod +x ./gradlew
-
-      - name: Diagnose Naver endpoint
-        shell: bash
-        run: |
-          set +e
-          URL='https://m.land.naver.com/complex/ajax/complexListByCortarNo?cortarNo=1159010800'
-          echo '=== DNS ==='
-          getent ahosts m.land.naver.com || true
-          echo '=== IPv4 HTTPS timing ==='
-          curl -4 -sS -o /tmp/naver-v4.out \
-            --connect-timeout 10 --max-time 30 \
-            -H 'Accept: application/json, text/plain, */*' \
-            -H 'Accept-Language: ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7' \
-            -H 'Referer: https://m.land.naver.com/' \
-            -H 'User-Agent: Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36' \
-            -w 'exit=%{exitcode} http=%{http_code} remote_ip=%{remote_ip} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s first_byte=%{time_starttransfer}s total=%{time_total}s redirect=%{redirect_url}\n' \
-            "$URL"
-          V4_EXIT=$?
-          echo "curl_ipv4_exit=$V4_EXIT"
-          echo '=== IPv4 response preview ==='
-          head -c 500 /tmp/naver-v4.out 2>/dev/null || true
-          echo
-          echo '=== IPv6 HTTPS timing ==='
-          curl -6 -sS -o /tmp/naver-v6.out \
-            --connect-timeout 10 --max-time 30 \
-            -H 'Accept: application/json, text/plain, */*' \
-            -H 'Referer: https://m.land.naver.com/' \
-            -H 'User-Agent: Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36' \
-            -w 'exit=%{exitcode} http=%{http_code} remote_ip=%{remote_ip} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s first_byte=%{time_starttransfer}s total=%{time_total}s redirect=%{redirect_url}\n' \
-            "$URL"
-          V6_EXIT=$?
-          echo "curl_ipv6_exit=$V6_EXIT"
-          echo '=== IPv6 response preview ==='
-          head -c 500 /tmp/naver-v6.out 2>/dev/null || true
-          echo
-          exit 0
 
       - name: Collect Daebang Hyundai 1 listings
         env:

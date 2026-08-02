@@ -158,7 +158,8 @@
 
 ## Runner
 
-현재 워크플로우 러너:
+네이버 부동산 수집은 국내 IP와 GUI Chrome이 있는 Apple Silicon Mac 러너에서 실행합니다.
+대방현대1차 전용 워크플로는 평일 KST 08:30 / 13:30에 동작합니다.
 
 ```yaml
 runs-on: [self-hosted, macOS, ARM64]

@@ -9,6 +9,7 @@ bot:
 
 daebang:
   enabled: true
+  target-complex-no: "368"
   target-complex-name: "대방현대1차"
   region-name: "서울동작_대방동"
   cortar-no: "1159010800"

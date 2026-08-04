@@ -65,7 +65,7 @@
   - `data/apt-listings-s*.json` 우선 사용
   - 없으면 `data/apt-listings.json` 사용
 - 기존 통합 파일을 샤드 파일로 1회 변환 가능
-  - `python3 scripts/split_listings_by_shard.py --input data/apt-listings.json --output-dir data`
+  - `python scripts/split_listings_by_shard.py --input data/apt-listings.json --output-dir data`
   - 수집 워크플로우를 다시 돌리지 않아도 리포트 워크플로우만 실행 가능
 
 ## 워크플로우
@@ -130,21 +130,36 @@
 
 ## 로컬 실행
 
+Windows(PowerShell/CMD):
+
+```powershell
+.\gradlew.bat clean bootRun
+```
+
+macOS/Linux 또는 Git Bash:
+
 ```bash
 ./gradlew clean bootRun
 ```
 
 컴파일 체크:
 
-```bash
-./gradlew --no-daemon compileKotlin
+```powershell
+.\gradlew.bat --no-daemon compileKotlin
 ```
 
 테스트:
 
-```bash
-./gradlew test
+```powershell
+.\gradlew.bat test
 ```
+
+사전 준비(Windows):
+
+- JDK 설치 불필요 — Gradle toolchain이 JDK 17을 자동 다운로드 (foojay resolver)
+- Node.js 22+ 및 `npm ci` (playwright-core 헬퍼용)
+- 시스템 Google Chrome 설치 (헤드풀 브라우저 수집용)
+- Python 3 (`python` 명령, 리포트 스크립트용)
 
 ## 필요한 설정
 
@@ -158,9 +173,11 @@
 
 ## Runner
 
-네이버 부동산 수집은 국내 IP와 GUI Chrome이 있는 Apple Silicon Mac 러너에서 실행합니다.
+네이버 부동산 수집은 국내 IP와 GUI Chrome이 있는 Windows PC 셀프 호스티드 러너에서 실행합니다.
+러너 머신에는 Git for Windows(Git Bash 포함), Node.js, Python 3, Google Chrome이 필요하며,
+워크플로 스크립트는 `shell: bash`(Git Bash)로 실행됩니다.
 대방현대1차 전용 워크플로는 평일 KST 08:30 / 13:30에 동작합니다.
 
 ```yaml
-runs-on: [self-hosted, macOS, ARM64]
+runs-on: [self-hosted, Windows, X64]
 ```

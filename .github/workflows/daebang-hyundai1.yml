@@ -18,9 +18,13 @@ concurrency:
 
 jobs:
   collect:
-    # 네이버가 GitHub 호스티드 러너의 해외 IP를 차단하므로 국내 Mac에서 실행한다.
-    runs-on: [self-hosted, macOS, ARM64]
+    # 네이버가 GitHub 호스티드 러너의 해외 IP를 차단하므로 국내 Windows PC에서 실행한다.
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
+    defaults:
+      run:
+        # Windows 러너에서도 기존 스크립트를 그대로 쓰기 위해 Git Bash 사용
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,11 +47,10 @@ jobs:
       - name: Install browser helper dependencies
         run: npm ci
 
-      - name: Grant execute permission
-        run: chmod +x ./gradlew
-
       - name: Collect Daebang Hyundai 1 listings
         env:
+          # Windows 기본 코드페이지(CP949)에서 한글 로그/데이터 깨짐 방지
+          JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8
           BOT_ENABLED: "false"
           DAEBANG_ENABLED: "true"
           DAEBANG_TARGET_COMPLEX_NO: "368"
@@ -64,7 +67,7 @@ jobs:
         run: ./gradlew --no-daemon bootRun
 
       - name: Build dashboard
-        run: python3 scripts/build_daebang_report.py
+        run: python scripts/build_daebang_report.py
 
       - name: Commit snapshot and dashboard
         run: |

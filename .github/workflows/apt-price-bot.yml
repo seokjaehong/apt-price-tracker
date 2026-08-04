@@ -70,11 +70,15 @@ jobs:
     strategy:
       matrix:
         region_shard: [1]
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: [self-hosted, Windows, X64]
     permissions:
       actions: write
       contents: write
     timeout-minutes: 180
+    defaults:
+      run:
+        # Windows 러너에서도 기존 스크립트를 그대로 쓰기 위해 Git Bash 사용
+        shell: bash
     concurrency:
       group: apt-price-bot-shard-${{ matrix.region_shard }}
       cancel-in-progress: false
@@ -101,30 +105,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect preinstalled JDK 17
-        id: detect_jdk
-        run: |
-          jdk17_home="$(/usr/libexec/java_home -v 17 2>/dev/null || true)"
-          if [[ -n "${jdk17_home}" ]]; then
-            echo "Using preinstalled JDK 17 at ${jdk17_home}"
-            echo "JAVA_HOME=${jdk17_home}" >> "$GITHUB_ENV"
-            echo "${jdk17_home}/bin" >> "$GITHUB_PATH"
-            echo "use_preinstalled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No preinstalled JDK 17 found. Fallback to setup-java."
-            echo "use_preinstalled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up JDK 17 (fallback download)
-        if: ${{ steps.detect_jdk.outputs.use_preinstalled != 'true' }}
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17.0.18"
+          java-version: "17"
           check-latest: false
-
-      - name: Grant execute permission for Gradle wrapper
-        run: chmod +x ./gradlew
 
       - name: Check locale
         run: |
@@ -179,7 +165,7 @@ jobs:
             run_commit_data="true"
 
             if [[ -f "${run_progress_file}" ]]; then
-              state_offset="$(python3 -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); d=json.loads(p.read_text(encoding="utf-8")); print(int(d.get("nextStartRegionOffset",0)))' "${run_progress_file}" 2>/dev/null || echo 0)"
+              state_offset="$(python -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); d=json.loads(p.read_text(encoding="utf-8")); print(int(d.get("nextStartRegionOffset",0)))' "${run_progress_file}" 2>/dev/null || echo 0)"
               if [[ "${state_offset}" =~ ^-?[0-9]+$ ]]; then
                 run_offset="${state_offset}"
               fi
@@ -201,7 +187,7 @@ jobs:
             if [[ -z "${run_offset}" ]]; then
               run_offset="0"
               if [[ -f "${run_progress_file}" ]]; then
-                state_offset="$(python3 -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); d=json.loads(p.read_text(encoding="utf-8")); print(int(d.get("nextStartRegionOffset",0)))' "${run_progress_file}" 2>/dev/null || echo 0)"
+                state_offset="$(python -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); d=json.loads(p.read_text(encoding="utf-8")); print(int(d.get("nextStartRegionOffset",0)))' "${run_progress_file}" 2>/dev/null || echo 0)"
                 if [[ "${state_offset}" =~ ^-?[0-9]+$ ]]; then
                   run_offset="${state_offset}"
                 fi

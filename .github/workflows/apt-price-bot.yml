@@ -105,6 +105,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Windows에서 `shell: bash`가 WSL 스텁(WindowsApps\bash.exe)으로 잡히지 않도록
+      # Git Bash 경로를 이후 스텝들의 PATH 최우선에 등록한다.
+      - name: Ensure Git Bash precedes WSL bash in PATH
+        shell: powershell
+        run: |
+          $gitBin = Join-Path (Split-Path (Split-Path (Get-Command git.exe).Source)) 'bin'
+          Add-Content -Path $env:GITHUB_PATH -Value $gitBin
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:

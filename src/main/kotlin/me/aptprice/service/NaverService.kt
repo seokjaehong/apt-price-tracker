@@ -110,7 +110,14 @@ class NaverService(
     fun abuseCooldownRemainingMillis(nowMillis: Long = System.currentTimeMillis()): Long =
         (blockedUntilEpochMillis - nowMillis).coerceAtLeast(0L)
 
-    fun fetchListings(regionName: String, cortarNo: String): List<Listing> {
+    /**
+     * @param targetComplexNosOverride 이 지역에서만 볼 단지 번호. null이면 설정값(naver.safe.target-complex-nos)을 쓴다.
+     */
+    fun fetchListings(
+        regionName: String,
+        cortarNo: String,
+        targetComplexNosOverride: Set<String>? = null,
+    ): List<Listing> {
         val now = System.currentTimeMillis()
         if (now < blockedUntilEpochMillis) {
             val remainSec = ((blockedUntilEpochMillis - now) / 1000).coerceAtLeast(1)
@@ -125,11 +132,12 @@ class NaverService(
             return emptyList()
         }
 
-        val configuredComplexNos = targetComplexNos
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toSet()
+        val configuredComplexNos = targetComplexNosOverride
+            ?: targetComplexNos
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .toSet()
         val complexes = if (configuredComplexNos.isEmpty()) {
             allComplexes
         } else {

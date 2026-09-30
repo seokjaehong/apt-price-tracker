@@ -46,3 +46,7 @@ node_modules/
 
 # GitHub Actions self-hosted runner (installed inside this repo on the Windows host)
 actions-runner/
+
+# Python
+__pycache__/
+*.pyc

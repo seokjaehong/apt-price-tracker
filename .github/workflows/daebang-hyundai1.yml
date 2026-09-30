@@ -1,4 +1,4 @@
-name: Daebang Hyundai 1 Tracker
+name: Dongjak Apartment Tracker
 
 on:
   workflow_dispatch:
@@ -55,18 +55,17 @@ jobs:
       - name: Install browser helper dependencies
         run: npm ci
 
-      - name: Collect Daebang Hyundai 1 listings
+      - name: Collect Dongjak 500+ household listings
         env:
           # Windows 기본 코드페이지(CP949)에서 한글 로그/데이터 깨짐 방지
           JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8
           BOT_ENABLED: "false"
-          DAEBANG_ENABLED: "true"
-          DAEBANG_TARGET_COMPLEX_NO: "368"
-          DAEBANG_TARGET_COMPLEX_NAME: "대방현대1차"
-          DAEBANG_REGION_NAME: "서울동작_대방동"
-          DAEBANG_CORTAR_NO: "1159010800"
-          DAEBANG_OFF_MARKET_CONFIRM_MISS_COUNT: "3"
-          NAVER_SAFE_TARGET_COMPLEX_NOS: "368"
+          DAEBANG_ENABLED: "false"
+          TARGETS_ENABLED: "true"
+          TARGETS_FILE: "targets/dongjak-500.json"
+          TARGETS_OFF_MARKET_CONFIRM_MISS_COUNT: "3"
+          # 대상 단지는 targets 파일이 지정하므로 전역 필터는 비워 둔다.
+          NAVER_SAFE_TARGET_COMPLEX_NOS: ""
           NAVER_SAFE_MAX_COMPLEX_PAGES: "3"
           NAVER_SAFE_MAX_COMPLEX_PAGES_ON_OVERFLOW: "3"
           NAVER_SAFE_MAX_COMPLEXES_PER_REGION: "0"
@@ -86,7 +85,7 @@ jobs:
             echo "No changes"
             exit 0
           fi
-          git commit -m "chore: update Daebang Hyundai listings [skip ci]"
+          git commit -m "chore: update Dongjak listings [skip ci]"
 
           # 실행이 겹치면 워크플로우가 붙들고 있는 커밋이 낡아 push가 거부된다.
           # 데이터 파일은 이번 회차 수집분이 더 최신이므로, 원격 최신 위에 그대로 다시 얹는다.
@@ -102,7 +101,7 @@ jobs:
               echo "원격이 이미 같은 내용입니다"
               exit 0
             fi
-            git commit -m "chore: update Daebang Hyundai listings [skip ci]"
+            git commit -m "chore: update Dongjak listings [skip ci]"
           done
           echo "push 3회 실패"
           exit 1

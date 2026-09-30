@@ -1,0 +1,320 @@
+{
+  "description": "서울 동작구 500세대 이상 아파트 단지 수집 대상",
+  "source": "m.land complexListByCortarNo + new.land complexes/overview (2026-09-30 기준)",
+  "minHouseholds": 500,
+  "totalComplexes": 44,
+  "regions": [
+    {
+      "name": "서울동작_상도동",
+      "cortarNo": "1159010200",
+      "complexes": [
+        {
+          "no": "9194",
+          "name": "래미안상도3차",
+          "households": 1656,
+          "approvedYear": "2004"
+        },
+        {
+          "no": "22491",
+          "name": "힐스테이트상도센트럴파크",
+          "households": 1559,
+          "approvedYear": "2012"
+        },
+        {
+          "no": "100235",
+          "name": "건영",
+          "households": 1376,
+          "approvedYear": "1997"
+        },
+        {
+          "no": "22789",
+          "name": "상도더샵1차",
+          "households": 1122,
+          "approvedYear": "2007"
+        },
+        {
+          "no": "133962",
+          "name": "상도역롯데캐슬파크엘",
+          "households": 950,
+          "approvedYear": "2021"
+        },
+        {
+          "no": "113097",
+          "name": "e편한세상상도노빌리티",
+          "households": 893,
+          "approvedYear": "2018"
+        },
+        {
+          "no": "22846",
+          "name": "힐스테이트상도프레스티지",
+          "households": 882,
+          "approvedYear": "2013"
+        },
+        {
+          "no": "161181",
+          "name": "상도푸르지오클라베뉴",
+          "households": 771,
+          "approvedYear": "2024"
+        },
+        {
+          "no": "388",
+          "name": "상도삼호",
+          "households": 682,
+          "approvedYear": "1994"
+        },
+        {
+          "no": "110919",
+          "name": "상도두산위브트레지움2차",
+          "households": 582,
+          "approvedYear": "2016"
+        },
+        {
+          "no": "8987",
+          "name": "상도중앙하이츠빌",
+          "households": 544,
+          "approvedYear": "2003"
+        },
+        {
+          "no": "3383",
+          "name": "상도래미안1차",
+          "households": 517,
+          "approvedYear": "2004"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_사당동",
+      "cortarNo": "1159010700",
+      "complexes": [
+        {
+          "no": "374",
+          "name": "극동",
+          "households": 1550,
+          "approvedYear": "1993"
+        },
+        {
+          "no": "375",
+          "name": "대림",
+          "households": 1152,
+          "approvedYear": "1990"
+        },
+        {
+          "no": "380",
+          "name": "사당우성2단지",
+          "households": 1080,
+          "approvedYear": "1993"
+        },
+        {
+          "no": "115936",
+          "name": "사당롯데캐슬골든포레",
+          "households": 959,
+          "approvedYear": "2021"
+        },
+        {
+          "no": "378",
+          "name": "신동아4차",
+          "households": 912,
+          "approvedYear": "1993"
+        },
+        {
+          "no": "3382",
+          "name": "동작삼성래미안",
+          "households": 896,
+          "approvedYear": "2003"
+        },
+        {
+          "no": "381",
+          "name": "사당우성3단지",
+          "households": 855,
+          "approvedYear": "1993"
+        },
+        {
+          "no": "1138",
+          "name": "사당자이",
+          "households": 719,
+          "approvedYear": "1999"
+        },
+        {
+          "no": "111467",
+          "name": "래미안로이파크",
+          "households": 668,
+          "approvedYear": "2018"
+        },
+        {
+          "no": "127384",
+          "name": "이수푸르지오더프레티움",
+          "households": 514,
+          "approvedYear": "2021"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_흑석동",
+      "cortarNo": "1159010500",
+      "complexes": [
+        {
+          "no": "131685",
+          "name": "흑석자이",
+          "households": 1772,
+          "approvedYear": "2025"
+        },
+        {
+          "no": "113292",
+          "name": "아크로리버하임",
+          "households": 1073,
+          "approvedYear": "2019"
+        },
+        {
+          "no": "102641",
+          "name": "흑석한강센트레빌2차",
+          "households": 963,
+          "approvedYear": "2012"
+        },
+        {
+          "no": "401",
+          "name": "한강현대",
+          "households": 960,
+          "approvedYear": "1988"
+        },
+        {
+          "no": "101496",
+          "name": "흑석한강푸르지오",
+          "households": 863,
+          "approvedYear": "2012"
+        },
+        {
+          "no": "398",
+          "name": "명수대현대",
+          "households": 660,
+          "approvedYear": "1988"
+        },
+        {
+          "no": "100304",
+          "name": "흑석한강센트레빌1차",
+          "households": 655,
+          "approvedYear": "2011"
+        },
+        {
+          "no": "112997",
+          "name": "롯데캐슬에듀포레",
+          "households": 545,
+          "approvedYear": "2018"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_신대방동",
+      "cortarNo": "1159010900",
+      "complexes": [
+        {
+          "no": "391",
+          "name": "우성1차",
+          "households": 1335,
+          "approvedYear": "1988"
+        },
+        {
+          "no": "123898",
+          "name": "보라매자이더포레스트",
+          "households": 959,
+          "approvedYear": "2021"
+        },
+        {
+          "no": "396",
+          "name": "현대",
+          "households": 880,
+          "approvedYear": "1996"
+        },
+        {
+          "no": "3386",
+          "name": "보라매롯데낙천대",
+          "households": 734,
+          "approvedYear": "2003"
+        },
+        {
+          "no": "13311",
+          "name": "동작상떼빌",
+          "households": 545,
+          "approvedYear": "2006"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_대방동",
+      "cortarNo": "1159010800",
+      "complexes": [
+        {
+          "no": "364",
+          "name": "대방대림",
+          "households": 1628,
+          "approvedYear": "1993"
+        },
+        {
+          "no": "7960",
+          "name": "대방주공2단지",
+          "households": 798,
+          "approvedYear": "1995"
+        },
+        {
+          "no": "3381",
+          "name": "대방e-편한세상1차",
+          "households": 609,
+          "approvedYear": "2003"
+        },
+        {
+          "no": "368",
+          "name": "대방현대1차",
+          "households": 514,
+          "approvedYear": "1994"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_노량진동",
+      "cortarNo": "1159010100",
+      "complexes": [
+        {
+          "no": "3280",
+          "name": "신동아리버파크",
+          "households": 1696,
+          "approvedYear": "2001"
+        },
+        {
+          "no": "362",
+          "name": "우성",
+          "households": 901,
+          "approvedYear": "1997"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_본동",
+      "cortarNo": "1159010400",
+      "complexes": [
+        {
+          "no": "372",
+          "name": "본동신동아",
+          "households": 765,
+          "approvedYear": "1993"
+        },
+        {
+          "no": "100694",
+          "name": "래미안트윈파크",
+          "households": 523,
+          "approvedYear": "2011"
+        }
+      ]
+    },
+    {
+      "name": "서울동작_동작동",
+      "cortarNo": "1159010600",
+      "complexes": [
+        {
+          "no": "104035",
+          "name": "이수힐스테이트",
+          "households": 680,
+          "approvedYear": "2013"
+        }
+      ]
+    }
+  ]
+}

@@ -315,6 +315,11 @@ h1{margin:0;font-size:26px;letter-spacing:-.02em} h2{margin:0;font-size:17px;let
 .chip.on{background:var(--chip-on);border-color:var(--chip-on);color:#fff;font-weight:700}
 .chip .c{opacity:.7;font-size:11px;margin-left:4px}
 .chip.zero{opacity:.45}
+/* 단지가 많아지면 칩만으로 화면이 가득 차므로 두 줄까지만 보이고 나머지는 접는다. */
+.chips.clamp{max-height:72px;overflow:hidden}
+.chips-more{margin-top:8px}
+.sec-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0 10px}
+.sec-bar .t{font-size:13px;font-weight:800;color:var(--muted);margin-right:auto}
 .row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) 1.4fr auto;gap:8px;margin-top:14px}
 select,input[type=search],input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--line-2);border-radius:9px;
   background:var(--panel-2);color:var(--text);font-size:13px;font-family:inherit}
@@ -555,7 +560,8 @@ PAGE = r"""<!doctype html>
     <div class="lbl">동 (복수 선택)</div>
     <div class="chips" id="dongChips"></div>
     <div class="lbl" style="margin-top:14px">단지 (복수 선택)</div>
-    <div class="chips" id="cxChips"></div>
+    <div class="chips clamp" id="cxChips"></div>
+    <div class="chips-more"><button class="btn" id="cxToggle" type="button" hidden></button></div>
     <div class="row">
       <select id="fPrice"></select>
       <select id="fPyeong"></select>
@@ -591,6 +597,11 @@ PAGE = r"""<!doctype html>
   </div>
 </section>
 
+<div class="sec-bar">
+  <span class="t" id="secInfo">단지별 매물</span>
+  <button class="btn" id="expandAll" type="button">모두 펼치기</button>
+  <button class="btn" id="collapseAll" type="button">모두 접기</button>
+</div>
 <div id="sections"></div>
 
 <section class="panel"><div class="note">
@@ -604,7 +615,8 @@ PAGE = r"""<!doctype html>
 <script>
 const META=__META__, RAW=__ROWS__, COMPLEXES=__COMPLEXES__, DUPS=__DUPS__;
 const CX=new Map(COMPLEXES.map(c=>[c.no,c]));
-const SECTION_STEP=8, ROW_STEP=30;
+/* 단지 구획은 접힌 상태가 기본이라 한 줄씩만 차지한다. 그래서 한 번에 더 많이 보여도 된다. */
+const SECTION_STEP=30, ROW_STEP=30, AUTO_OPEN_MAX=2, CX_CHIP_CLAMP=14;
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -614,7 +626,15 @@ const stLabel=s=>META.statusLabel[s]||s;
 const dongSel=new Set(), cxSel=new Set();
 let sortState={key:'p',dir:'asc'}, sumSort={key:'cnt',dir:'desc'};
 let visibleSections=SECTION_STEP;
-const rowLimit=new Map(), closed=new Set();
+const rowLimit=new Map();
+/* 펼침 상태는 3가지다: 사용자가 연 것, 사용자가 닫은 것, 그 외(남은 단지 수에 따라 자동). */
+const opened=new Set(), shut=new Set();
+let cxChipsOpen=false, lastAuto=false, lastOrder=[];
+function isOpen(no,auto){ return opened.has(no) ? true : shut.has(no) ? false : auto; }
+function toggleSection(no,auto){
+  if(isOpen(no,auto)){ opened.delete(no); shut.add(no); }
+  else { shut.delete(no); opened.add(no); }
+}
 
 /* ---------- 테마 ---------- */
 const THEMES=['auto','light','dark'], THEME_LABEL={auto:'자동',light:'라이트',dark:'다크'};
@@ -718,6 +738,11 @@ function renderCxChips(rows){
     }));
   $('cxChips').innerHTML=html.join('');
   $('selCount').textContent=cxSel.size?cxSel.size+'개 단지 선택':(dongSel.size?dongSel.size+'개 동':'전체');
+  /* 동을 고르면 후보가 줄어드니, 접기는 후보가 많을 때만 건다. */
+  const over=pool.length>CX_CHIP_CLAMP, btn=$('cxToggle');
+  btn.hidden=!over;
+  $('cxChips').classList.toggle('clamp',over&&!cxChipsOpen);
+  if(over) btn.textContent=cxChipsOpen?'▴ 단지 목록 접기':'▾ 단지 '+pool.length+'개 모두 보기';
 }
 function renderActiveBar(){
   const chips=[];
@@ -815,12 +840,19 @@ function renderSections(rows,stats){
   const order=stats.slice().sort((a,b)=>b.cnt-a.cnt||String(a.name).localeCompare(String(b.name),'ko'));
   const by=new Map();
   for(const x of rows){ if(!by.has(x.c)) by.set(x.c,[]); by.get(x.c).push(x); }
+  /* 단지 하나만 남을 만큼 좁혀졌다면 굳이 한 번 더 누르게 하지 않는다. */
+  const auto=order.length>0&&order.length<=AUTO_OPEN_MAX;
+  lastAuto=auto; lastOrder=order.map(s=>s.no);
+  const openCount=order.reduce((n,s)=>n+(isOpen(s.no,auto)?1:0),0);
+  $('secInfo').textContent=order.length
+    ? '단지별 매물 · 단지 '+order.length+'개 중 '+openCount+'개 펼침'
+    : '단지별 매물';
   if(!order.length){ $('sections').innerHTML='<section class="panel"><div class="empty">조건에 맞는 매물이 없습니다.</div></section>'; return; }
   const shown=order.slice(0,visibleSections);
   const hidden=order.length-shown.length;
   $('sections').innerHTML=shown.map(s=>{
     const items=sortRows(by.get(s.no)||[]);
-    const isClosed=closed.has(s.no);
+    const isClosed=!isOpen(s.no,auto);
     const limit=rowLimit.get(s.no)||ROW_STEP;
     const vis=items.slice(0,limit);
     const rest=items.length-vis.length;
@@ -902,8 +934,17 @@ $('sections').addEventListener('click',e=>{
   if(more){ const no=more.dataset.more; rowLimit.set(no,(rowLimit.get(no)||ROW_STEP)+ROW_STEP); render(); return; }
   if(e.target.closest('#moreSections')){ visibleSections+=SECTION_STEP; render(); return; }
   const head=e.target.closest('[data-toggle]');
-  if(head){ const no=head.dataset.toggle; closed.has(no)?closed.delete(no):closed.add(no); render(); }
+  if(head){ toggleSection(head.dataset.toggle,lastAuto); render(); }
 });
+$('expandAll').addEventListener('click',()=>{
+  for(const no of lastOrder){ shut.delete(no); opened.add(no); }
+  render();
+});
+$('collapseAll').addEventListener('click',()=>{
+  for(const no of lastOrder){ opened.delete(no); shut.add(no); }
+  render();
+});
+$('cxToggle').addEventListener('click',()=>{ cxChipsOpen=!cxChipsOpen; render(); });
 $('activeBar').addEventListener('click',e=>{
   const b=e.target.closest('[data-clear]'); if(!b) return;
   const t=b.dataset.clear, v=b.dataset.value;
@@ -915,7 +956,7 @@ $('activeBar').addEventListener('click',e=>{
 });
 $('summaryHead').addEventListener('click',()=>$('summaryPanel').classList.toggle('closed'));
 $('reset').addEventListener('click',()=>{
-  dongSel.clear(); cxSel.clear(); closed.clear();
+  dongSel.clear(); cxSel.clear(); opened.clear(); shut.clear(); cxChipsOpen=false;
   for(const id of ['fPrice','fPyeong','fStatus','fGroup','fQ']) $(id).value='';
   sortState={key:'p',dir:'asc'};
   reset(true);

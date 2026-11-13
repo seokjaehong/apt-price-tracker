@@ -169,6 +169,239 @@ def find_lookalikes(listings, clustered):
     return [group for group in buckets.values() if len(group) == 2]
 
 
+TRADES = Path("data/trades.json")
+
+# 계약을 하고 매물을 내리므로 계약일은 보통 최종 노출보다 앞선다. 뒤로도 조금 열어 둔다.
+TRADE_DAYS_BEFORE, TRADE_DAYS_AFTER = 60, 14
+# 실거래가는 대개 호가에서 깎여 정해진다. 위로는 조금만 연다.
+TRADE_PRICE_LOW, TRADE_PRICE_HIGH = 0.85, 1.05
+TRADE_AREA_TOL = 0.5
+# 이만큼 지나도록 맞는 실거래가 없으면 판 게 아니라 내린 것으로 본다.
+WITHDRAWN_DAYS = int(os.getenv("APT_WITHDRAWN_DAYS") or 180)
+
+# 손으로 적어 넣는 실거래. 네이버에서 본 거래 하나를 바로 붙여 보려는 용도라,
+# API 키도 워크플로우 설정도 필요 없다. 국토부 자료와 같은 모양으로 바꿔 쓴다.
+MANUAL_TRADES = Path("data/trades-manual.json")
+
+# 적는 사람이 한글로 쓰든 영어로 쓰든 받아들인다.
+MANUAL_KEYS = {
+    "apt": ("apt", "name", "단지", "단지명", "아파트"),
+    "area": ("area", "전용", "전용면적", "면적"),
+    "floor": ("floor", "층"),
+    "price": ("price", "가격", "실거래가", "거래가"),
+    "date": ("date", "day", "날짜", "계약일"),
+    "dong": ("dong", "동", "건물동"),
+    "cancelled": ("cancelled", "해제", "취소"),
+}
+
+
+def norm_name(raw):
+    return re.sub(r"[^0-9a-z가-힣]", "", unicodedata.normalize("NFKC", raw or "").lower())
+
+
+def parse_day(raw):
+    try:
+        return datetime.strptime(str(raw or "")[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def load_trades(path):
+    """해제(계약 취소)된 거래는 체결로 볼 수 없으니 여기서 걸러낸다."""
+    if not path or not path.exists():
+        return []
+    return [r for r in json.loads(path.read_text(encoding="utf-8")) if not r.get("cancelled")]
+
+
+def manual_price(raw):
+    """'15.6억', '15억6000', '156000', 15.6 을 모두 만원 단위 정수로 바꾼다.
+
+    아파트 거래에 1000만원대는 없으므로, 1000 미만 숫자는 억으로 적은 것으로 본다.
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return int(round(raw * 10000)) if raw < 1000 else int(round(raw))
+    text = re.sub(r"[,\s원]", "", str(raw or ""))
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)억(\d+)?만?", text)
+    if m:
+        return int(round(float(m.group(1)) * 10000)) + int(m.group(2) or 0)
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)만?", text)
+    if m:
+        value = float(m.group(1))
+        return int(round(value * 10000)) if value < 1000 else int(round(value))
+    return None
+
+
+def manual_day(raw):
+    """'2026-10-19', '2026.10.19', '20261019' 를 모두 받아 ISO 날짜로."""
+    parts = [p for p in re.split(r"\D+", str(raw or "").strip()) if p]
+    if len(parts) == 1 and len(parts[0]) == 8:
+        parts = [parts[0][:4], parts[0][4:6], parts[0][6:]]
+    if len(parts) != 3:
+        return None
+    try:
+        return datetime(int(parts[0]), int(parts[1]), int(parts[2])).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def manual_field(entry, key):
+    for alias in MANUAL_KEYS[key]:
+        if entry.get(alias) not in (None, ""):
+            return entry[alias]
+    return None
+
+
+def load_manual_trades(path, meta):
+    """손으로 적은 실거래를 읽는다.
+
+    필수는 단지명·가격·계약일 셋뿐이다. 전용면적과 층은 적으면 더 정확히 붙고,
+    비우면 그 조건은 보지 않는다. 잘못 적은 줄은 건너뛰고 사유를 돌려준다.
+    """
+    if not path or not path.exists():
+        return [], []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [], [f"JSON 형식이 깨졌습니다 ({e.lineno}번째 줄 근처: {e.msg})"]
+    rows = raw.get("trades", []) if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        return [], ["trades 는 대괄호로 둘러싼 목록이어야 합니다"]
+
+    dong_of = {norm_name(info.get("name")): info.get("dong") for info in meta.values()}
+    out, problems = [], []
+    for i, entry in enumerate(rows, 1):
+        if not isinstance(entry, dict):
+            problems.append(f"{i}번째 줄: 중괄호로 둘러싼 항목이 아닙니다")
+            continue
+        name = str(manual_field(entry, "apt") or "").strip()
+        price = manual_price(manual_field(entry, "price"))
+        day = manual_day(manual_field(entry, "date"))
+        if not (name and price and day):
+            missing = [label for label, ok in
+                       (("단지명", name), ("가격", price), ("계약일", day)) if not ok]
+            problems.append(f"{i}번째 줄({name or '이름 없음'}): {', '.join(missing)}이(가) 없거나 못 읽었습니다")
+            continue
+        area, floor = manual_field(entry, "area"), manual_field(entry, "floor")
+        try:
+            area = float(area) if area is not None else None
+        except (TypeError, ValueError):
+            problems.append(f"{i}번째 줄({name}): 전용면적 '{area}' 을 숫자로 못 읽어 비우고 진행합니다")
+            area = None
+        floor = int(floor) if str(floor).strip().lstrip("-").isdigit() else None
+        out.append({
+            "id": f"manual|{norm_name(name)}|{day}|{price}|{i}",
+            "apt": name,
+            "umd": dong_of.get(norm_name(name)) or "",
+            "dong": str(manual_field(entry, "dong") or ""),
+            "area": area,
+            "floor": floor,
+            "price": price,
+            "date": day,
+            "cancelled": bool(manual_field(entry, "cancelled")),
+            "manual": True,
+        })
+    return [r for r in out if not r["cancelled"]], problems
+
+
+def index_trades(trades, meta):
+    """국토부 단지명을 수집 대상 단지 번호에 붙인다.
+
+    국토부와 네이버의 표기가 달라서(띄어쓰기, '1차' 유무) 정규화한 뒤 완전일치를 먼저 보고,
+    없으면 한쪽이 다른 쪽을 포함하는 것 중 가장 긴 이름을 쓴다. 둘로 갈리면 버린다.
+    """
+    by_dong = defaultdict(list)
+    for no, info in meta.items():
+        by_dong[info.get("dong") or ""].append((norm_name(info.get("name")), no))
+    everything = [pair for pairs in by_dong.values() for pair in pairs]
+
+    out, missed = defaultdict(list), Counter()
+    for trade in trades:
+        pool = by_dong.get(trade.get("umd") or "") or everything
+        name = norm_name(trade.get("apt"))
+        hits = [no for n, no in pool if n and n == name]
+        if not hits and len(name) >= 3:
+            near = [(len(n), no) for n, no in pool if len(n) >= 3 and (n in name or name in n)]
+            if near:
+                longest = max(length for length, _ in near)
+                hits = [no for length, no in near if length == longest]
+        if len(hits) == 1:
+            out[hits[0]].append(trade)
+        else:
+            missed[trade.get("apt") or "?"] += 1
+    return out, missed
+
+
+def trade_score(listing, trade):
+    """매물 하나와 실거래 하나가 같은 건일 가능성. 조건을 못 넘기면 None."""
+    price, area = listing.get("price"), listing.get("areaExclusiveSqm")
+    if not price or not area or not trade.get("price"):
+        return None
+    # 손으로 적은 거래는 전용면적·층을 비울 수 있다. 비운 조건은 보지 않는다.
+    if trade.get("area") is not None and abs(trade["area"] - area) > TRADE_AREA_TOL:
+        return None
+    ratio = trade["price"] / price
+    if not TRADE_PRICE_LOW <= ratio <= TRADE_PRICE_HIGH:
+        return None
+    floor, total = parse_floor(listing.get("floor"))
+    trade_floor = trade.get("floor")
+    if trade_floor is not None:
+        if total is None:
+            return None
+        # 매물 층이 "중/23"처럼 밴드로만 적힌 경우가 많아, 밴드 호환까지 인정한다.
+        if not floor_compatible((floor, total), (trade_floor, total)):
+            return None
+    seen, day = parse_day(listing.get("lastSeenAt")), parse_day(trade.get("date"))
+    if seen is None or day is None:
+        return None
+    gap = (seen - day).days
+    if not -TRADE_DAYS_AFTER <= gap <= TRADE_DAYS_BEFORE:
+        return None
+    exact = trade_floor is not None and isinstance(floor, int) and floor == trade_floor
+    return ((2.0 if exact else 0.0)
+            + (1 - min(abs(1 - ratio) / (1 - TRADE_PRICE_LOW), 1))
+            + (1 - min(abs(gap) / TRADE_DAYS_BEFORE, 1)))
+
+
+def match_trades(listings, homes, trades_by_complex, today):
+    """내려간 집마다 가장 그럴듯한 실거래를 하나씩 붙인다.
+
+    묶음(같은 집으로 추정한 여러 매물)을 한 단위로 본다. 한 거래가 여러 집에
+    중복으로 붙지 않도록 점수가 높은 쪽이 먼저 가져간다.
+    """
+    by_home = defaultdict(list)
+    for x in listings:
+        by_home[homes.get(x["articleNo"], x["articleNo"])].append(x)
+    closed = {root: group for root, group in by_home.items()
+              if not any(x.get("status") in LIVE_STATUS for x in group)}
+
+    pairs = []
+    for root, group in closed.items():
+        for x in group:
+            for trade in trades_by_complex.get(complex_no(x), ()):
+                score = trade_score(x, trade)
+                if score is not None:
+                    pairs.append((score, root, trade))
+    pairs.sort(key=lambda p: -p[0])
+
+    sold, used_trades = {}, set()
+    for score, root, trade in pairs:
+        if root in sold or trade["id"] in used_trades:
+            continue
+        sold[root] = trade
+        used_trades.add(trade["id"])
+
+    withdrawn = set()
+    for root, group in closed.items():
+        if root in sold:
+            continue
+        last = parse_day(max((x.get("lastSeenAt") or "") for x in group))
+        if last and (today - last).days >= WITHDRAWN_DAYS:
+            withdrawn.add(root)
+    return sold, withdrawn
+
+
 STATUS_ORDER = {"ACTIVE": 0, "RELISTED": 1, "OFF_MARKET_CANDIDATE": 2, "OFF_MARKET": 3}
 STATUS_LABEL = {
     "ACTIVE": "판매중",
@@ -347,6 +580,11 @@ td.price{font-weight:700;font-variant-numeric:tabular-nums}
 .badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11.5px;font-weight:700}
 .st-active{background:var(--ok-bg);color:var(--ok-fg)} .st-relisted{background:var(--info-bg);color:var(--info-fg)}
 .st-off_market_candidate{background:var(--warn-bg);color:var(--warn-fg)} .st-off_market{background:var(--bad-bg);color:var(--bad-fg)}
+/* 내려간 매물의 뒷이야기: 실거래로 확인된 것과 그냥 내린 것 */
+.st-sold{background:var(--accent-soft);color:var(--accent)}
+.st-wd{background:var(--chip);color:var(--muted)}
+.deal{white-space:nowrap} .deal .d{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.deal .up{color:var(--bad-fg)} .deal .down{color:var(--ok-fg)}
 .grp{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
 .grp.maybe{background:var(--chip);color:var(--muted)}
 tr.grouped td:first-child{border-left:3px solid transparent}
@@ -392,9 +630,13 @@ def main():
     ap.add_argument("data", nargs="?", default=os.getenv("APT_LISTINGS") or str(DATA), help="매물 JSON 경로")
     ap.add_argument("--targets", default=os.getenv("APT_TARGETS") or str(TARGETS), help="수집 대상 단지 JSON 경로")
     ap.add_argument("--out", default=os.getenv("APT_REPORT_OUT") or str(OUT), help="출력 HTML 경로")
+    ap.add_argument("--trades", default=os.getenv("APT_TRADES") or str(TRADES), help="실거래 JSON 경로")
+    ap.add_argument("--manual-trades", default=os.getenv("APT_MANUAL_TRADES") or str(MANUAL_TRADES),
+                    help="손으로 적은 실거래 JSON 경로")
     args = ap.parse_args()
 
     data_path, targets_path, out_path = Path(args.data), Path(args.targets), Path(args.out)
+    trades_path, manual_path = Path(args.trades), Path(args.manual_trades)
     listings = json.loads(data_path.read_text(encoding="utf-8")) if data_path.exists() else []
     meta, dong_order = load_targets(targets_path)
 
@@ -431,10 +673,18 @@ def main():
             lookalike_total += 1
             lookalike_ids.update(x["articleNo"] for x in pair)
 
+    # 내려간 매물이 팔린 것인지 그냥 내린 것인지는 국토부 실거래와 맞춰 봐야 알 수 있다.
+    manual_trades, manual_problems = load_manual_trades(manual_path, meta)
+    all_trades = load_trades(trades_path) + manual_trades
+    trades_by_complex, trade_missed = index_trades(all_trades, meta)
+    sold, withdrawn = match_trades(listings, homes, trades_by_complex, datetime.now())
+
     rows = []
     for x in listings:
         no = complex_no(x)
         article = x["articleNo"]
+        root = homes.get(article, article)
+        trade = sold.get(root)
         info = meta.get(no, {})
         grp = labels.get(article)
         rows.append({
@@ -457,9 +707,12 @@ def main():
             "fs": when(x.get("firstSeenAt")),
             "ls": when(x.get("lastSeenAt")),
             "mc": x.get("missCount") or 0,
-            "h": homes.get(article, article),
+            "h": root,
             "g": list(grp) if grp else 0,
             "lk": 1 if article in lookalike_ids else 0,
+            # 실거래 [계약일, 거래금액(만원), 층]. 묶음 단위로 붙으므로 같은 집끼리 같은 값이다.
+            "tr": [trade["date"], trade["price"], trade["floor"]] if trade else 0,
+            "wd": 1 if root in withdrawn else 0,
         })
     rows.sort(key=lambda r: (r["c"], STATUS_ORDER.get(r["s"], 9), r["p"] or 0, r["n"]))
 
@@ -506,6 +759,12 @@ def main():
         "pyeongBands": present_pyeong,
         "statuses": present_status,
         "statusLabel": STATUS_LABEL,
+        "trades": len(all_trades),
+        "soldHomes": len(sold),
+        "withdrawnHomes": len(withdrawn),
+        "withdrawnDays": WITHDRAWN_DAYS,
+        # 단지명이 안 붙은 실거래. 표기 차이를 찾아 고칠 단서가 된다.
+        "tradeMissed": trade_missed.most_common(8),
     }
 
     def embed(obj):
@@ -527,6 +786,19 @@ def main():
     print(f"생성 완료: {out_path} ({elapsed:.2f}초, {len(page) / 1024:.0f}KB)")
     print(f"  매물 {len(rows)}건 · 단지 {meta_out['complexCount']}/{meta_out['targetCount']}개 · "
           f"실매물 추정 {meta_out['homes']}건 · 동일추정 {cluster_total}묶음 · 조건유사 {lookalike_total}쌍")
+    if all_trades:
+        print(f"  실거래 {len(all_trades)}건"
+              + (f"(직접 입력 {len(manual_trades)}건)" if manual_trades else "")
+              + f" · 거래 확인 {len(sold)}집 · 철회 추정 {len(withdrawn)}집({WITHDRAWN_DAYS}일 기준)"
+              + (f" · 단지명 미매칭 {sum(trade_missed.values())}건" if trade_missed else ""))
+    else:
+        print(f"  실거래 데이터 없음 - {manual_path} 에 적으면 거래 확인/철회 추정이 켜집니다")
+    for problem in manual_problems:
+        print(f"  [주의] {manual_path}: {problem}")
+    unmatched = [t for t in manual_trades if t["id"] not in {s["id"] for s in sold.values()}]
+    for trade in unmatched:
+        print(f"  [주의] 직접 적은 {trade['apt']} {trade['date']} {trade['price']}만원 - "
+              f"맞는 매물을 못 찾았습니다(단지명·가격·날짜를 확인하세요)")
 
 
 PAGE = r"""<!doctype html>
@@ -552,6 +824,8 @@ PAGE = r"""<!doctype html>
   <div class="stat"><div class="k">재등록</div><div class="v" id="sRe">0</div><div class="h">RELISTED</div></div>
   <div class="stat"><div class="k">삭제 후보</div><div class="v" id="sCand">0</div><div class="h">연속 미노출</div></div>
   <div class="stat"><div class="k">거래종결 추정</div><div class="v" id="sOff">0</div><div class="h">3회 연속 미노출</div></div>
+  <div class="stat"><div class="k">거래 확인</div><div class="v" id="sSold">0</div><div class="h">실거래와 매칭된 집</div></div>
+  <div class="stat"><div class="k">철회 추정</div><div class="v" id="sWd">0</div><div class="h" id="sWdHint">실거래 없이 경과</div></div>
 </div>
 
 <section class="panel">
@@ -566,6 +840,12 @@ PAGE = r"""<!doctype html>
       <select id="fPrice"></select>
       <select id="fPyeong"></select>
       <select id="fStatus"></select>
+      <select id="fResult">
+        <option value="">거래결과(전체)</option>
+        <option value="sold">거래 확인</option>
+        <option value="wd">철회 추정</option>
+        <option value="pending">확인중</option>
+      </select>
       <select id="fGroup">
         <option value="">묶음(전체)</option>
         <option value="dup">동일 추정만</option>
@@ -612,6 +892,20 @@ PAGE = r"""<!doctype html>
 <br>OFF_MARKET은 네이버 부동산에서 연속 3회 보이지 않았다는 뜻이며 실제 매매 완료를 확정하지 않습니다. 계약 취소, 중개사 철회, 가격 수정 후 재등록도 포함될 수 있습니다.
 </div></section>
 
+<section class="panel"><div class="note" id="tradeNote">
+<b>거래 확인</b>은 내려간 매물을 국토교통부 실거래가와 맞춰 본 결과입니다. 같은 단지·같은 전용면적에
+층이 맞아떨어지고, 계약일이 최종 노출 시점 앞뒤에 들어오며, 실거래가가 호가의 85~105% 안에 있을 때 한 건으로 봅니다.
+매물 층이 "중/23"처럼 밴드로만 적힌 경우에는 그 밴드에 드는 층까지 인정합니다. 어디까지나 추정이므로 확정 자료로 쓰지 마세요.
+<b>철회 추정</b>은 내려간 뒤 그만큼 지나도록 맞는 실거래가 없는 집입니다. 팔린 게 아니라 매물을 거둔 것으로 봅니다.
+<b>확인중</b>은 아직 그 기간이 지나지 않아 판단을 미룬 상태입니다. 실거래 신고 기한이 계약일로부터 30일이라,
+최근에 내려간 매물은 한 달쯤 뒤에야 거래가 확인될 수 있습니다.
+<br>해제(계약 취소)로 신고된 거래는 매칭에서 제외합니다. 실거래 자료 출처는 국토교통부 공공데이터포털입니다.
+</div>
+<div class="note" id="tradeOff" hidden>
+<b>실거래 연동이 꺼져 있습니다.</b> 국토교통부 실거래가 데이터(<code>data/trades.json</code>)가 없어
+거래 확인·철회 추정을 표시하지 않습니다. 공공데이터포털에서 인증키를 받아 <code>MOLIT_API_KEY</code>로 넣으면 켜집니다.
+</div></section>
+
 <script>
 const META=__META__, RAW=__ROWS__, COMPLEXES=__COMPLEXES__, DUPS=__DUPS__;
 const CX=new Map(COMPLEXES.map(c=>[c.no,c]));
@@ -622,6 +916,10 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const money=v=>{const n=Number(v);if(!Number.isFinite(n))return '-';return n>=10000?(n/10000).toFixed(2)+'억':n.toLocaleString()+'만';};
 const stLabel=s=>META.statusLabel[s]||s;
+/* 내려간 매물의 결말. 아직 올라와 있는 매물은 판정 대상이 아니다. */
+const resultOf=x=>(!META.trades||x.s==='ACTIVE'||x.s==='RELISTED')?'':(x.tr?'sold':(x.wd?'wd':'pending'));
+const RESULT_LABEL={sold:'거래 확인',wd:'철회 추정',pending:'확인중'};
+const mmdd=s=>String(s||'').slice(5).replace('-','/');
 
 const dongSel=new Set(), cxSel=new Set();
 let sortState={key:'p',dir:'asc'}, sumSort={key:'cnt',dir:'desc'};
@@ -662,9 +960,11 @@ $('fStatus').innerHTML='<option value="">상태(전체)</option>'+META.statuses.
 
 function passOther(x){
   const p=$('fPrice').value, y=$('fPyeong').value, s=$('fStatus').value, g=$('fGroup').value, q=$('fQ').value.trim().toLowerCase();
+  const rz=$('fResult').value;
   if(p && x.pb!==p) return false;
   if(y && x.yb!==y) return false;
   if(s && x.s!==s) return false;
+  if(rz && resultOf(x)!==rz) return false;
   if(g==='dup' && !x.g) return false;
   if(g==='look' && !x.lk) return false;
   if(g==='solo' && (x.g||x.lk)) return false;
@@ -752,6 +1052,7 @@ function renderActiveBar(){
   if($('fPrice').value) add('가격대: '+$('fPrice').value,'fPrice');
   if($('fPyeong').value) add('평형: '+$('fPyeong').value,'fPyeong');
   if($('fStatus').value) add('상태: '+stLabel($('fStatus').value),'fStatus');
+  if($('fResult').value) add('거래결과: '+RESULT_LABEL[$('fResult').value],'fResult');
   if($('fGroup').value) add('묶음: '+$('fGroup').selectedOptions[0].text,'fGroup');
   if($('fQ').value.trim()) add('검색: '+$('fQ').value.trim(),'fQ');
   const bar=$('activeBar');
@@ -766,16 +1067,17 @@ function summarize(rows){
   for(const x of rows){
     let s=by.get(x.c);
     if(!s){const c=CX.get(x.c)||{name:x.cn,dong:x.d,hh:null,yr:null};
-      s={no:x.c,name:c.name,dong:c.dong,hh:c.hh,yr:c.yr,cnt:0,live:0,homes:new Set(),min:null,max:null,py:new Set(),dup:0};
+      s={no:x.c,name:c.name,dong:c.dong,hh:c.hh,yr:c.yr,cnt:0,live:0,homes:new Set(),min:null,max:null,py:new Set(),dup:0,sold:new Set()};
       by.set(x.c,s);}
     s.cnt++;
     if(x.s==='ACTIVE'||x.s==='RELISTED'){s.live++;s.homes.add(x.h);}
     if(x.g) s.dup++;
+    if(x.tr) s.sold.add(x.h);
     const p=Number(x.p);
     if(Number.isFinite(p)){ s.min=s.min===null?p:Math.min(s.min,p); s.max=s.max===null?p:Math.max(s.max,p); }
     if(x.y) s.py.add(Number(x.y));
   }
-  return [...by.values()].map(s=>({...s,homes:s.homes.size,
+  return [...by.values()].map(s=>({...s,homes:s.homes.size,sold:s.sold.size,
     pyMin:s.py.size?Math.min(...s.py):null, pyMax:s.py.size?Math.max(...s.py):null}));
 }
 function renderSummary(stats){
@@ -789,7 +1091,7 @@ function renderSummary(stats){
   });
   const th=(l,k,cls)=>'<th class="s '+(cls||'')+(sumSort.key===k?' on':'')+'" data-sum="'+k+'">'+l+'<span class="ind">'+ind(k,sumSort)+'</span></th>';
   const head='<thead><tr>'+th('단지','name')+th('동','dong')+th('세대수','hh','num')+th('준공','yr','num')
-    +th('매물','cnt','num')+th('실매물 추정','homes','num')+th('동일 추정','dup','num')
+    +th('매물','cnt','num')+th('실매물 추정','homes','num')+th('동일 추정','dup','num')+th('거래 확인','sold','num')
     +th('최저가','min','num')+th('최고가','max','num')+th('평형','pyMin','num')+'</tr></thead>';
   const body=sorted.map(s=>'<tr data-pick="'+esc(s.no)+'" style="cursor:pointer">'
     +'<td data-l="단지"><b>'+esc(s.name)+'</b></td>'
@@ -799,13 +1101,28 @@ function renderSummary(stats){
     +'<td data-l="매물" class="num">'+s.cnt+'</td>'
     +'<td data-l="실매물 추정" class="num">'+s.homes+'</td>'
     +'<td data-l="동일 추정" class="num">'+(s.dup||'')+'</td>'
+    +'<td data-l="거래 확인" class="num">'+(s.sold||'')+'</td>'
     +'<td data-l="최저가" class="num">'+money(s.min)+'</td>'
     +'<td data-l="최고가" class="num">'+money(s.max)+'</td>'
     +'<td data-l="평형" class="num">'+(s.pyMin?(s.pyMin===s.pyMax?s.pyMin+'평':s.pyMin+'~'+s.pyMax+'평'):'-')+'</td></tr>').join('');
-  $('summary').innerHTML=head+'<tbody>'+(body||'<tr><td colspan="10" class="empty">조건에 맞는 단지가 없습니다.</td></tr>')+'</tbody>';
+  $('summary').innerHTML=head+'<tbody>'+(body||'<tr><td colspan="11" class="empty">조건에 맞는 단지가 없습니다.</td></tr>')+'</tbody>';
 }
 
 /* ---------- 매물 표 ---------- */
+/* 내려간 매물 옆에 실거래를 붙여 보여준다. 호가와의 차액이 실제로 궁금한 값이다. */
+function dealCell(x){
+  const r=resultOf(x);
+  if(!r) return '';
+  if(r==='sold'){
+    const diff=x.tr[1]-x.p;
+    const gap=diff===0?'호가와 같음'
+      :'<span class="'+(diff>0?'up':'down')+'">호가 '+(diff>0?'+':'−')+money(Math.abs(diff))+'</span>';
+    return '<span class="badge st-sold">'+money(x.tr[1])+'</span>'
+      +'<span class="d">'+esc(mmdd(x.tr[0]))+' 계약'+(x.tr[2]?' · '+x.tr[2]+'층':'')+' · '+gap+'</span>';
+  }
+  if(r==='wd') return '<span class="badge st-wd">철회 추정</span>';
+  return '<span class="d">확인중</span>';
+}
 function rowHtml(x){
   let cell='', cls='';
   if(x.g){ cell='<span class="grp g'+x.g[2]+'">동일 추정 '+esc(x.g[0])+' · '+x.g[1]+'건</span>'; cls=' class="grouped g'+x.g[2]+'"'; }
@@ -813,6 +1130,7 @@ function rowHtml(x){
   return '<tr'+cls+'>'
     +'<td data-l="묶음">'+cell+'</td>'
     +'<td data-l="상태"><span class="badge st-'+esc(x.s.toLowerCase())+'">'+esc(stLabel(x.s))+'</span></td>'
+    +'<td data-l="실거래" class="deal">'+dealCell(x)+'</td>'
     +'<td data-l="가격" class="price num">'+money(x.p)+'</td>'
     +'<td data-l="평형" class="num">'+(x.y?x.y+'평':'-')+'</td>'
     +'<td data-l="전용" class="num">'+(x.ae??'-')+'㎡</td>'
@@ -827,7 +1145,7 @@ function rowHtml(x){
 function headHtml(){
   const th=(l,k,cls)=>k?'<th class="s '+(cls||'')+(sortState.key===k?' on':'')+'" data-sort="'+k+'">'+l+'<span class="ind">'+ind(k,sortState)+'</span></th>'
                       :'<th class="'+(cls||'')+'">'+l+'</th>';
-  return '<thead><tr>'+th('묶음','')+th('상태','s')+th('가격','p','num')+th('평형','y','num')+th('전용','ae','num')
+  return '<thead><tr>'+th('묶음','')+th('상태','s')+th('실거래','')+th('가격','p','num')+th('평형','y','num')+th('전용','ae','num')
     +th('동','b')+th('층','fn')+th('특징','fd')+th('최초 확인','fs')+th('마지막 확인','ls')+th('미노출','mc','num')+th('링크','')+'</tr></thead>';
 }
 function dupsHtml(no){
@@ -859,6 +1177,7 @@ function renderSections(rows,stats){
     const tags='<span class="tag acc">'+items.length+'건</span>'
       +'<span class="tag">실매물 추정 '+s.homes+'</span>'
       +(s.dup?'<span class="tag">동일 추정 '+s.dup+'건</span>':'')
+      +(s.sold?'<span class="tag">거래 확인 '+s.sold+'</span>':'')
       +'<span class="tag">'+money(s.min)+' ~ '+money(s.max)+'</span>';
     const head='<div class="cx-head" data-toggle="'+esc(s.no)+'"><span class="caret">'+(isClosed?'▸':'▾')+'</span>'
       +'<span class="nm">'+esc(s.name)+'</span>'
@@ -889,6 +1208,9 @@ function render(){
   $('sRe').textContent=rows.filter(x=>x.s==='RELISTED').length;
   $('sCand').textContent=rows.filter(x=>x.s==='OFF_MARKET_CANDIDATE').length;
   $('sOff').textContent=rows.filter(x=>x.s==='OFF_MARKET').length;
+  /* 거래 확인·철회 추정은 묶음(집) 단위라 중복을 제거하고 센다. */
+  $('sSold').textContent=new Set(rows.filter(x=>x.tr).map(x=>x.h)).size;
+  $('sWd').textContent=new Set(rows.filter(x=>x.wd).map(x=>x.h)).size;
 
   syncSort();
   const stats=summarize(rows);
@@ -957,17 +1279,26 @@ $('activeBar').addEventListener('click',e=>{
 $('summaryHead').addEventListener('click',()=>$('summaryPanel').classList.toggle('closed'));
 $('reset').addEventListener('click',()=>{
   dongSel.clear(); cxSel.clear(); opened.clear(); shut.clear(); cxChipsOpen=false;
-  for(const id of ['fPrice','fPyeong','fStatus','fGroup','fQ']) $(id).value='';
+  for(const id of ['fPrice','fPyeong','fStatus','fResult','fGroup','fQ']) $(id).value='';
   sortState={key:'p',dir:'asc'};
   reset(true);
 });
-for(const id of ['fPrice','fPyeong','fStatus','fGroup']) $(id).addEventListener('change',()=>reset(true));
+for(const id of ['fPrice','fPyeong','fStatus','fResult','fGroup']) $(id).addEventListener('change',()=>reset(true));
 $('fSort').addEventListener('change',()=>{
   const [k,d]=$('fSort').value.split(':');
   sortState={key:k,dir:d};
   render();
 });
 let qTimer; $('fQ').addEventListener('input',()=>{clearTimeout(qTimer);qTimer=setTimeout(()=>reset(true),180);});
+
+$('sWdHint').textContent='실거래 없이 '+Math.round(META.withdrawnDays/30)+'개월 경과';
+/* 실거래 데이터가 아직 없으면 거래결과 칸이 전부 비어 혼란스러우므로 숨긴다. */
+if(!META.trades){
+  for(const id of ['sSold','sWd']) $(id).closest('.stat').hidden=true;
+  $('fResult').hidden=true;
+  document.getElementById('tradeNote').hidden=true;
+  document.getElementById('tradeOff').hidden=false;
+}
 
 render();
 </script>

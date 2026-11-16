@@ -171,8 +171,9 @@ def find_lookalikes(listings, clustered):
 
 TRADES = Path("data/trades.json")
 
-# 계약을 하고 매물을 내리므로 계약일은 보통 최종 노출보다 앞선다. 뒤로도 조금 열어 둔다.
-TRADE_DAYS_BEFORE, TRADE_DAYS_AFTER = 60, 14
+# 계약을 하고 매물을 내리므로 계약일은 보통 최종 노출보다 앞선다. 뒤로도 열어 둔다.
+# 매물이 먼저 내려가고 한참 뒤에 계약되는 경우가 실제로 있다(하루 떴다 사라진 뒤 18일 만에 계약).
+TRADE_DAYS_BEFORE, TRADE_DAYS_AFTER = 60, 30
 # 실거래가는 대개 호가에서 깎여 정해진다. 위로는 조금만 연다.
 TRADE_PRICE_LOW, TRADE_PRICE_HIGH = 0.85, 1.05
 TRADE_AREA_TOL = 0.5
@@ -796,9 +797,19 @@ def main():
     for problem in manual_problems:
         print(f"  [주의] {manual_path}: {problem}")
     unmatched = [t for t in manual_trades if t["id"] not in {s["id"] for s in sold.values()}]
+    # 추적을 시작하기 한참 전의 거래는 맞출 매물 자체가 없다. 적어둬도 흠이 아니니 조용히 넘긴다.
+    seen_days = [d for d in (parse_day(x.get("lastSeenAt")) for x in listings) if d]
+    tracked_from = min(seen_days) if seen_days else None
+    too_old = []
     for trade in unmatched:
-        print(f"  [주의] 직접 적은 {trade['apt']} {trade['date']} {trade['price']}만원 - "
-              f"맞는 매물을 못 찾았습니다(단지명·가격·날짜를 확인하세요)")
+        day = parse_day(trade["date"])
+        if tracked_from and day and (tracked_from - day).days > TRADE_DAYS_BEFORE:
+            too_old.append(trade)
+        else:
+            print(f"  [주의] 직접 적은 {trade['apt']} {trade['date']} {trade['price']}만원 - "
+                  f"맞는 매물을 못 찾았습니다(단지명·가격·날짜를 확인하세요)")
+    if too_old:
+        print(f"  직접 적은 {len(too_old)}건은 추적 시작({tracked_from:%Y-%m-%d}) 전 거래라 맞출 매물이 없습니다")
 
 
 PAGE = r"""<!doctype html>

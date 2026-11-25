@@ -200,6 +200,12 @@ def norm_name(raw):
     return re.sub(r"[^0-9a-z가-힣]", "", unicodedata.normalize("NFKC", raw or "").lower())
 
 
+def norm_dong(raw):
+    """'105동', '105', ' 105 ' 를 모두 같은 값으로 본다."""
+    text = re.sub(r"[^0-9a-z가-힣]", "", unicodedata.normalize("NFKC", str(raw or "")).lower())
+    return text[:-1] if len(text) > 1 and text.endswith("동") else text
+
+
 def parse_day(raw):
     try:
         return datetime.strptime(str(raw or "")[:10], "%Y-%m-%d")
@@ -339,7 +345,10 @@ def trade_score(listing, trade):
     price, area = listing.get("price"), listing.get("areaExclusiveSqm")
     if not price or not area or not trade.get("price"):
         return None
-    # 손으로 적은 거래는 전용면적·층을 비울 수 있다. 비운 조건은 보지 않는다.
+    # 손으로 적은 거래는 동·전용면적·층을 비울 수 있다. 비운 조건은 보지 않는다.
+    want_dong = norm_dong(trade.get("dong"))
+    if want_dong and norm_dong(listing.get("buildingName")) != want_dong:
+        return None
     if trade.get("area") is not None and abs(trade["area"] - area) > TRADE_AREA_TOL:
         return None
     ratio = trade["price"] / price
